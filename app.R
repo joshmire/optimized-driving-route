@@ -102,7 +102,7 @@ server <- function(input, output, session) {
         ),
         p(),
         div(
-          p("WARNING: This tool will only work if a valid key has been entered.  If the map fails to laod after entering your key, you will need to refresh the page and enter a valid key when prompted."),
+          p("WARNING: This tool will only work if a valid key has been entered.  If the map fails to load after entering your key, you will need to refresh the page and enter a valid key when prompted."),
           style = "font-style: italic; color: red;"
         ),
         style = "text-align: left;"
