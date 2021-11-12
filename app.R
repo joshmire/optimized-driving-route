@@ -103,8 +103,8 @@ ui <-
         mainPanel(
           google_mapOutput(outputId = "mapEurope"),
           div(
-            textOutput("txtOut"),
-            style = "font-size: 16pt;"
+            htmlOutput("txtOut"),
+            style = "font-size: 10pt;"
             )
         )
       )
@@ -206,7 +206,7 @@ server <- function(input, output, session) {
       )
     })
     
-    output$txtOut <- renderText({})
+    output$txtOut <- renderUI({})
     
     output$optimized_link <- renderUI({})
     
@@ -217,12 +217,12 @@ server <- function(input, output, session) {
   
   observeEvent(input$addInput,{
     
-    output$txtOut <- renderText({})
+    output$txtOut <- renderUI({})
     
     if(length(ids) < 10){
       ids <<- c(ids, max(ids)+1)
     }else{
-      output$txtOut <- renderText({"Cannot add more locations.  Max is ten."})
+      output$txtOut <- renderUI({HTML("Cannot add more locations.  Max is ten.")})
     }
     
     output$city_list <- renderUI({
@@ -245,12 +245,12 @@ server <- function(input, output, session) {
   
   observeEvent(input$removeInput,{
     
-    output$txtOut <- renderText({})
+    output$txtOut <- renderUI({})
     
     if(length(ids) > 2){
       ids <<- head(ids, -1)
     }else{
-      output$txtOut <- renderText({"Must have at least two locations."})
+      output$txtOut <- renderUI({HTML("Must have at least two locations.")})
     }
     
     output$city_list <- renderUI({
@@ -315,13 +315,13 @@ server <- function(input, output, session) {
     }
     
     if(length(inputs) < 2){
-      output$txtOut <- renderText({"Must have at least two locations."})
+      output$txtOut <- renderUI({HTML("Must have at least two locations.")})
       hide_spinner()
     }else if(num_origins > 1){
-      output$txtOut <- renderText({"You may only designate one location as your starting location."})
+      output$txtOut <- renderUI({HTML("You may only designate one location as your starting location.")})
       hide_spinner()
     }else if(num_destinations > 1){
-      output$txtOut <- renderText({"You may only designate one location as your ending location."})
+      output$txtOut <- renderUI({HTML("You may only designate one location as your ending location.")})
       hide_spinner()
     }else{
       
@@ -356,7 +356,7 @@ server <- function(input, output, session) {
       row.names(distances) <<- inputs
       
       if(any(is.na(distances))){
-        output$txtOut <- renderText({"Driving between specified locations is impossible!"})
+        output$txtOut <- renderUI({HTML("Driving between specified locations is impossible!")})
         hide_spinner()
       }else{
         
@@ -397,6 +397,55 @@ server <- function(input, output, session) {
           }
         }
         
+        weeks <<- floor(time / 604800)
+        
+        days <<- floor((time - (weeks * 604800)) / 86400)
+        
+        hours <<- floor((time - (weeks * 604800) - (days * 86400)) / 3600)
+        
+        mins <<- floor((time - (weeks * 604800) - (days * 86400) - (hours * 3600)) / 60)
+        
+        secs <<- time - (weeks * 604800) - (days * 86400) - (hours * 3600) - (mins * 60)
+        
+        if(weeks == 1){
+          week_text <<- paste0(weeks, " week")
+        }else if(weeks > 1){
+          week_text <<- paste0(weeks, " weeks")
+        }
+        
+        if(days == 1){
+          day_text <<- paste0(days, " day")
+        }else if(days > 1){
+          day_text <<- paste0(days, " days")
+        }
+        
+        if(hours == 1){
+          hour_text <<- paste0(hours, " hour")
+        }else if(hours > 1){
+          hour_text <<- paste0(hours, " hours")
+        }
+        
+        if(mins == 1){
+          min_text <<- paste0(mins, " min")
+        }else if(mins > 1){
+          min_text <<- paste0(mins, " mins")
+        }
+        
+        if(weeks > 0){
+          estimate <- paste(week_text, day_text, hour_text, min_text, sep = " ")
+        }else if(days > 0){
+          estimate <- paste(day_text, hour_text, min_text, sep = " ")
+        }else if(hours > 0){
+          estimate <- paste(hour_text, min_text, sep = " ")
+        }else if(mins > 0){
+          estimate <- min_text
+        }else{
+          if(secs == 1){
+            estimate <- paste0(secs, " sec")
+          }else{
+            estimate <- paste0(secs, " secs")
+          }
+        }
         
         ## return optimized route
         
@@ -457,7 +506,7 @@ server <- function(input, output, session) {
             )
         }
         
-        df_route <- data.frame(polyline = res$routes$overview_polyline$points)
+        df_route <- data.frame(polyline = res$routes$overview_polyline$points, route = route)
         
         google_map_update(map_id = "mapEurope") %>%
         clear_bounds() %>%
@@ -470,7 +519,7 @@ server <- function(input, output, session) {
           stroke_colour = "#FF33D6",
           stroke_weight = 7,
           stroke_opacity = 0.7,
-          info_window = "New route",
+          info_window = "route",
           load_interval = 100
         ) %>%
         add_markers(
@@ -482,7 +531,11 @@ server <- function(input, output, session) {
           update_map_view = T
         )
         
-        output$txtOut <- renderText(paste0("Route optimized.  The fastest route is: ", route,"."))
+        route_text <- paste0("Your optimized route is ", route,".")
+        
+        estimate_text <- paste0("Estimated driving time is ", estimate, ".")
+        
+        output$txtOut <- renderUI({HTML(paste(route_text, estimate_text, sep = "<br>"))})
   
         output$optimized_link <- renderUI({
           div(
