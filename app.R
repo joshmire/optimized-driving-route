@@ -1,16 +1,42 @@
 ## libraries
 
 library(shiny)
+library(shinybusy)
 library(googleway)
 library(combinat)
 
+api_set <- 1
 
 ## UI
 
 ui <- 
   shinyUI(
     fluidPage(
+      add_busy_spinner(spin = "double-bounce", position = "full-page", color = "#4472C4"),
       tags$head(HTML("<title>Route Optimization by Joshua Mire</title>")),
+      tags$script(HTML("
+        $(document).ready(function() {
+          $('.btn').on('click', function(){$(this).blur()});
+        })
+      ")),
+      tags$script(HTML(
+        '
+          $(document).keyup(function(event) {
+            if ($("#api").is(":focus") && (event.key == "Enter")) {
+              $("#ok").click();
+             }
+          })
+        '
+      )),
+      tags$script(HTML(
+        '
+          $(document).keyup(function(event) {
+            if (($("#txtInput1").is(":focus") || $("#txtInput2").is(":focus") || $("#txtInput3").is(":focus") || $("#txtInput4").is(":focus") || $("#txtInput5").is(":focus") || $("#txtInput6").is(":focus") || $("#txtInput7").is(":focus") || $("#txtInput8").is(":focus") || $("#txtInput9").is(":focus")) &&  (event.key == "Enter")) {
+              $("#getRoute").click();
+             }
+          })
+        '
+      )),
       titlePanel(
         fluidRow(
           column(
@@ -32,7 +58,7 @@ ui <-
                 a("Joshua Mire", href = "https://www.joshmire.com/", target = "_blank")
               )
             ),
-            style = "font-size: 10pt;"
+            style = "font-size: 10pt; text-align: right;"
           )
         )
       ),
@@ -114,6 +140,8 @@ server <- function(input, output, session) {
   
   observeEvent(input$ok, {
     
+    api_set <<- 2
+    
     api_key <- input$api
     
     removeModal()
@@ -174,6 +202,8 @@ server <- function(input, output, session) {
       )
     })
     
+    output$txtOut <- renderText({})
+    
     output$optimized_link <- renderUI({})
     
   })
@@ -182,7 +212,9 @@ server <- function(input, output, session) {
   ## add another location input unless already showing ten
   
   observeEvent(input$addInput,{
-
+    
+    output$txtOut <- renderText({})
+    
     if(length(ids) < 10){
       ids <<- c(ids, max(ids)+1)
     }else{
@@ -208,6 +240,8 @@ server <- function(input, output, session) {
   ## remove a location input unless only two left
   
   observeEvent(input$removeInput,{
+    
+    output$txtOut <- renderText({})
     
     if(length(ids) > 2){
       ids <<- head(ids, -1)
@@ -244,80 +278,83 @@ server <- function(input, output, session) {
   observeEvent(input$getRoute,{
     
     
+    show_spinner()
+
     ## create vector of inputted locations and check at least two locations, up to one origin, and up to one destination
     
-    inputs <- c()
+    inputs <<- c()
     
     for(i in 1:length(ids)){
       if(input[[paste0("txtInput",i)]] != ""){
-        inputs[i] <- input[[paste0("txtInput",i)]]
+        inputs <<- c(inputs, input[[paste0("txtInput",i)]])
       }
     }
     
-    origin <- NULL
+    origin <<- NULL
     
-    num_origins <- 0
+    num_origins <<- 0
     
-    distination <- NULL
+    distination <<- NULL
     
-    num_destinations <- 0
+    num_destinations <<- 0
     
     for(i in 1:length(inputs)){
       if(!is.null(input[[paste0("constraint",i)]])){
         if(input[[paste0("constraint",i)]] == "start"){
-          origin <- i
-          num_origins <- num_origins + 1
+          origin <<- i
+          num_origins <<- num_origins + 1
         }else if(input[[paste0("constraint",i)]] == "end"){
-          destination <- i
-          num_destinations <- num_destinations + 1
+          destination <<- i
+          num_destinations <<- num_destinations + 1
         }
       }
     }
     
     if(length(inputs) < 2){
       output$txtOut <- renderText({"Must have at least two locations."})
+      hide_spinner()
     }else if(num_origins > 1){
       output$txtOut <- renderText({"You may only designate one location as your starting location."})
+      hide_spinner()
     }else if(num_destinations > 1){
       output$txtOut <- renderText({"You may only designate one location as your ending location."})
+      hide_spinner()
     }else{
       
       
       ## figure out optimal route
+
+      coordinates <<- data.frame()
       
-      output$txtOut <- renderText({"Optimizing Route..."})
-      
-      distances <- data.frame()
-      coordinates <- data.frame()
+      distances <<- matrix(NA, length(inputs), length(inputs))
       
       for(i in 1:length(inputs)){
         for(j in 1:length(inputs)){
           if(i == j){
-            distances[i,j] <- 0
-            a <- geocode(inputs[i], output = "more", source = "google")
-            coordinates[i,"City"] <- inputs[i]
-            coordinates[i, "Full name"] <- a$address
-            coordinates[i,"Latitude"] <- a$lat
-            coordinates[i,"Longitude"] <- a$lon
+            distances[i,j] <<- 0
+            test <<- google_geocode(inputs[i])
+            coordinates[i, "Full name"] <<- test$results$formatted_address
+            coordinates[i,"Latitude"] <<- test$results$geometry$location$lat
+            coordinates[i,"Longitude"] <<- test$results$geometry$location$lng
           }else{
-            a <- google_directions(origin = inputs[i], destination = inputs[j], simplify = T, mode = "driving", departure_time = "now", traffic_model = "best_guess")
-            if(is.null(a$routes$legs[[1]]$duration_in_traffic$value)){
-              distances[i,j] <- NA
-            }else{
-              distances[i,j] <- a$routes$legs[[1]]$duration_in_traffic$value
+            test <<- google_directions(origin = inputs[i], destination = inputs[j], simplify = T, mode = "driving", departure_time = "now", traffic_model = "best_guess")
+            if(!is.null(test$routes$legs[[1]]$duration_in_traffic$value)){
+              distances[i,j] <<- test$routes$legs[[1]]$duration_in_traffic$value
             }
           }
         }
       }
       
-      if(any(is.na(distances))){
-        
-        output$txtOut <- renderText({"Driving between specified locations is impossible!"})
-        
-      }else{
+      distances <- as.data.frame(distances)
       
-        names(distances)[1:length(inputs)] <- inputs
-        row.names(distances) <- inputs
+      names(distances)[1:length(inputs)] <<- inputs
+      
+      row.names(distances) <<- inputs
+      
+      if(any(is.na(distances))){
+        output$txtOut <- renderText({"Driving between specified locations is impossible!"})
+        hide_spinner()
+      }else{
         
         possibilities <- permn(length(inputs))
         
@@ -449,6 +486,9 @@ server <- function(input, output, session) {
             actionButton("externalLink1", "Detailed directions for your optimized route.", onclick = paste0("window.open('", link,"', '_blank')"), style = "width: 100%; font-size: 8pt; font-weight: bold; background-color: #4472C4; color: white; border-color: black;")
           )
         })
+        
+        hide_spinner()
+        
       }
     }
   })
